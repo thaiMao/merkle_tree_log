@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -7,40 +9,98 @@ struct Stack {}
 /// * `retain` - Holds a single right authentication node at height MERKLE_TREE_HEIGHT - 2.
 /// * `current_authentication_path` - A list of nodes representing the current authentication path.
 /// * `keep` - A list of nodes stored for efficient computation of left nodes.
-#[derive(Clone, Debug)]
-pub struct MerkleTree<const MERKLE_TREE_HEIGHT: usize> {
-    retain: Node,
-    treehashes: Vec<TreeHash>,
-    current_authentication_path: Vec<Node>,
+pub struct MerkleTree<const MERKLE_TREE_HEIGHT: usize, T>
+where
+    T: Node,
+{
+    retain: InternalNode,
+    treehashes: Vec<TreeHash<T>>,
+    current_authentication_path: Vec<Box<dyn Node>>,
     leaves: Vec<Leaf>,
-    keep: Keep,
+    keep: HashSet<usize, Box<dyn Node>>,
 }
 
-#[derive(Clone, Debug)]
-struct Node {
-    index: usize,
+impl<const MERKLE_TREE_HEIGHT: usize, T> MerkleTree<MERKLE_TREE_HEIGHT, T>
+where
+    T: Node + Clone + Debug,
+{
+    /// Update and output phase of merkle tree traversal.
+    /// * `leaf` - The current leaf.
+    /// Returns the current authentication path.
+    fn update_and_output<'a>(&mut self, leaf: Leaf) -> &'a [Box<dyn Node>] {
+        let first_parent_left_node_height = Self::get_first_left_node_parent_height(leaf);
+
+        // Check if the parent leaf at height first_parent_left_node_height + 1 is a left node.
+        let is_left_node = (first_parent_left_node_height + 1).pow(2) % 2 == 0
+            && first_parent_left_node_height + 1 != MERKLE_TREE_HEIGHT;
+
+        // If it is a left node then authentication at height firstParentLeftNodeHeight is a right node and should be stored in `Keep`.
+        if is_left_node && first_parent_left_node_height < MERKLE_TREE_HEIGHT - 1 {
+            //self.keep.insert(first_parent_left_node_height);
+        }
+
+        if leaf.left_node() {
+            if first_parent_left_node_height == 0 {
+                if let Some(node) = self.current_authentication_path.get_mut(0) {
+                    let hash = String::from("");
+                    let height = 0;
+                    let leaf_index = 0;
+                    *node = Box::new(TailNode::new(hash, height, leaf_index));
+                };
+            }
+        }
+        todo!()
+    }
+
+    fn get_first_left_node_parent_height(leaf: Leaf) -> usize {
+        let mut height = 0;
+
+        if leaf.left_node() {
+            height
+        } else {
+            let mut node = leaf;
+
+            while !node.left_node() {
+                height += 1;
+
+                if node.even() {
+                    node.index = (node.index + 2) / (2 - 1);
+                } else {
+                    node.index = (node.index + 1) / (2 - 1);
+                }
+            }
+
+            height
+        }
+    }
 }
 
-impl Node {
+pub trait Node {
+    fn even(&self) -> bool {
+        todo!();
+    }
+}
+
+impl InternalNode {
     fn even(&self) -> bool {
         todo!()
     }
 }
 
-impl From<Leaf> for Node {
-    fn from(leaf: Leaf) -> Self {
-        Self { index: leaf.index }
-    }
-}
-
 #[derive(Clone, Debug)]
-struct TreeHash {
+struct TreeHash<T>
+where
+    T: Node,
+{
     stack: Arc<Mutex<Stack>>,
-    node: Option<Node>,
+    node: Option<T>,
     index: usize,
 }
 
-impl TreeHash {
+impl<T> TreeHash<T>
+where
+    T: Node,
+{
     fn new(stack: Arc<Mutex<Stack>>) -> Self {
         Self {
             stack,
@@ -68,28 +128,6 @@ impl TreeHash {
 
         todo!();
     }
-
-    fn get_first_left_node_parent_height(leaf: Leaf) -> usize {
-        let mut height = 0;
-
-        if leaf.left_node() {
-            height
-        } else {
-            let mut node = Node::from(leaf);
-
-            while !leaf.left_node() {
-                height += 1;
-
-                if node.even() {
-                    node.index = (node.index + 2) / (2 - 1);
-                } else {
-                    node.index = (node.index + 1) / (2 - 1);
-                }
-            }
-
-            height
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -106,6 +144,8 @@ impl Leaf {
         }
     }
 }
+
+impl Node for Leaf {}
 
 #[derive(Clone, Debug)]
 struct Keep;
@@ -126,3 +166,8 @@ impl TailNode {
         }
     }
 }
+
+impl Node for TailNode {}
+
+#[derive(Clone, Debug)]
+struct InternalNode;
