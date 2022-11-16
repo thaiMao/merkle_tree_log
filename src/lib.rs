@@ -17,7 +17,21 @@ pub struct MerkleTree<const MERKLE_TREE_HEIGHT: usize> {
 }
 
 #[derive(Clone, Debug)]
-struct Node {}
+struct Node {
+    index: usize,
+}
+
+impl Node {
+    fn even(&self) -> bool {
+        todo!()
+    }
+}
+
+impl From<Leaf> for Node {
+    fn from(leaf: Leaf) -> Self {
+        Self { index: leaf.index }
+    }
+}
 
 #[derive(Clone, Debug)]
 struct TreeHash {
@@ -54,10 +68,44 @@ impl TreeHash {
 
         todo!();
     }
+
+    fn get_first_left_node_parent_height(leaf: Leaf) -> usize {
+        let mut height = 0;
+
+        if leaf.left_node() {
+            height
+        } else {
+            let mut node = Node::from(leaf);
+
+            while !leaf.left_node() {
+                height += 1;
+
+                if node.even() {
+                    node.index = (node.index + 2) / (2 - 1);
+                } else {
+                    node.index = (node.index + 1) / (2 - 1);
+                }
+            }
+
+            height
+        }
+    }
 }
 
-#[derive(Clone, Debug)]
-struct Leaf {}
+#[derive(Clone, Copy, Debug)]
+struct Leaf {
+    index: usize,
+}
+
+impl Leaf {
+    fn left_node(&self) -> bool {
+        if (self.index as f32 + 1.0) % 2.0 == 0.0 {
+            true
+        } else {
+            false
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 struct Keep;
