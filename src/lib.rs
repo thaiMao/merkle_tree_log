@@ -1,33 +1,40 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-#[derive(Clone, Debug)]
-struct Stack {}
+struct Stack {
+    nodes: Vec<Box<dyn Node + Send + Sync>>,
+}
+
+impl Stack {
+    fn pop(&mut self) -> Option<Box<dyn Node + Send + Sync>> {
+        self.nodes.pop()
+    }
+}
 
 /// * `retain` - Holds a single right authentication node at height MERKLE_TREE_HEIGHT - 2.
 /// * `current_authentication_path` - A list of nodes representing the current authentication path.
 /// * `keep` - A list of nodes stored for efficient computation of left nodes.
-pub struct MerkleTree<const MERKLE_TREE_HEIGHT: usize, T>
+pub struct MerkleTree<'a, const MERKLE_TREE_HEIGHT: usize, T>
 where
     T: Node,
 {
     retain: InternalNode,
-    treehashes: Vec<TreeHash<T>>,
+    treehashes: Vec<TreeHash<'a, T>>,
     current_authentication_path: Vec<Box<dyn Node>>,
     leaves: Vec<Leaf>,
     keep: HashSet<usize, Box<dyn Node>>,
 }
 
-impl<const MERKLE_TREE_HEIGHT: usize, T> MerkleTree<MERKLE_TREE_HEIGHT, T>
+impl<'a, const MERKLE_TREE_HEIGHT: usize, T> MerkleTree<'a, MERKLE_TREE_HEIGHT, T>
 where
     T: Node + Clone + Debug,
 {
     /// Update and output phase of merkle tree traversal.
     /// * `leaf` - The current leaf.
     /// Returns the current authentication path.
-    fn update_and_output<'a>(&mut self, leaf: Leaf) -> &'a [Box<dyn Node>] {
+    fn update_and_output<'b>(&mut self, leaf: Leaf) -> &'b [Box<dyn Node>] {
         let first_parent_left_node_height = Self::get_first_left_node_parent_height(leaf);
 
         // Check if the parent leaf at height first_parent_left_node_height + 1 is a left node.
@@ -74,11 +81,14 @@ where
         }
     }
 }
-
 pub trait Node {
     fn even(&self) -> bool {
         todo!();
     }
+
+    fn height(&self) -> usize;
+
+    fn hash(&self) -> &str;
 }
 
 impl InternalNode {
@@ -87,25 +97,27 @@ impl InternalNode {
     }
 }
 
-#[derive(Clone, Debug)]
-struct TreeHash<T>
+#[derive(Clone)]
+struct TreeHash<'a, T>
 where
     T: Node,
 {
     stack: Arc<Mutex<Stack>>,
     node: Option<T>,
     index: usize,
+    leaves: &'a [Leaf],
 }
 
-impl<T> TreeHash<T>
+impl<'a, T> TreeHash<'a, T>
 where
-    T: Node,
+    T: Node + Send + Sync,
 {
-    fn new(stack: Arc<Mutex<Stack>>) -> Self {
+    fn new(stack: Arc<Mutex<Stack>>, leaves: &'a [Leaf]) -> Self {
         Self {
             stack,
             index: 0,
             node: None,
+            leaves,
         }
     }
 
@@ -120,12 +132,30 @@ where
 
     /// Executes the treehash alogirthm once.
     /// After the last call the stack contains one node, the desired inner node on height h.
-    fn update(&mut self) {
+    fn update(&mut self, leaf_index: usize, level: usize) {
+        let hashed_leaf = self.hash(self.leaves.get(leaf_index));
+        let height = 0;
+        let original_leaf = TailNode::new(hashed_leaf, height, leaf_index);
+        let leaf = original_leaf;
+
         let stack = Arc::clone(&self.stack);
         thread::spawn(move || {
-            let stack = stack.lock();
+            let stack = stack.lock().unwrap();
+
+            while stack.nodes.len() != 0 && stack.nodes.last().unwrap().height() == leaf.height {
+                let top_node = stack.pop().unwrap();
+                let prehash = if top_node.j() < leaf.j() {
+                    top_node.hash() + leaf.hash()
+                } else {
+                    leaf.hash() + top_node.hash()
+                };
+            }
         });
 
+        todo!();
+    }
+
+    fn hash<U>(&self, content: U) -> String {
         todo!();
     }
 }
@@ -133,6 +163,7 @@ where
 #[derive(Clone, Copy, Debug)]
 struct Leaf {
     index: usize,
+    height: usize,
 }
 
 impl Leaf {
@@ -145,7 +176,15 @@ impl Leaf {
     }
 }
 
-impl Node for Leaf {}
+impl Node for Leaf {
+    fn height(&self) -> usize {
+        self.height
+    }
+
+    fn hash(&self) -> &str {
+        todo!()
+    }
+}
 
 #[derive(Clone, Debug)]
 struct Keep;
@@ -167,7 +206,15 @@ impl TailNode {
     }
 }
 
-impl Node for TailNode {}
+impl Node for TailNode {
+    fn height(&self) -> usize {
+        self.height
+    }
+
+    fn hash(&self) -> &str {
+        todo!()
+    }
+}
 
 #[derive(Clone, Debug)]
 struct InternalNode;
