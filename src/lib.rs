@@ -204,6 +204,10 @@ impl Leaf {
             false
         }
     }
+
+    fn print(&self) -> String {
+        todo!();
+    }
 }
 
 impl Node for Leaf {
@@ -250,5 +254,50 @@ impl Node for TailNode {
 struct InternalNode;
 
 fn is_even(index: usize) -> bool {
+    todo!();
+}
+
+///
+///
+/// * `leaf` -
+/// * `leaves` -
+/// * `authentication_path` -
+///
+fn calculate_root(
+    mut index: usize,
+    leaves: &[Leaf],
+    authentication_path: &[Box<dyn Node>],
+) -> String {
+    let mut leaf = TailNode::new(hash(leaves[index].print()), index, 0);
+
+    for neighbor in authentication_path.iter() {
+        let mut prehash = String::new();
+
+        if neighbor.height() == 0 {
+            if index < neighbor.j() {
+                prehash.push_str(&leaf.hash());
+                prehash.push_str(&neighbor.hash());
+            } else {
+                prehash.push_str(&neighbor.hash());
+                prehash.push_str(&leaf.hash());
+            }
+        } else {
+            if leaf.j() < neighbor.j() {
+                prehash.push_str(&leaf.hash());
+                prehash.push_str(&neighbor.hash());
+            } else {
+                prehash.push_str(&neighbor.hash());
+                prehash.push_str(&leaf.hash());
+            }
+        }
+        index = (leaf.j().max(neighbor.j()) + 1) / 2 - 1;
+
+        leaf = TailNode::new(hash(prehash), index, 0);
+    }
+
+    leaf.hash
+}
+
+fn hash(content: String) -> String {
     todo!();
 }
