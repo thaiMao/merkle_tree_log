@@ -11,6 +11,10 @@ impl Stack {
     fn pop(&mut self) -> Option<Box<dyn Node + Send + Sync>> {
         self.nodes.pop()
     }
+
+    fn push(&mut self, element: Box<dyn Node + Send + Sync>) {
+        self.nodes.push(element);
+    }
 }
 
 /// * `retain` - Holds a single right authentication node at height MERKLE_TREE_HEIGHT - 2.
@@ -86,6 +90,10 @@ pub trait Node {
         todo!();
     }
 
+    fn j(&self) -> usize {
+        todo!();
+    }
+
     fn height(&self) -> usize;
 
     fn hash(&self) -> &str;
@@ -132,15 +140,21 @@ where
 
     /// Executes the treehash alogirthm once.
     /// After the last call the stack contains one node, the desired inner node on height h.
-    fn update(&mut self, leaf_index: usize, level: usize) {
+    fn update(
+        &mut self,
+        leaf_index: usize,
+        level: usize,
+        hash: impl Fn(String) -> String + Send + 'static,
+    ) {
         let hashed_leaf = self.hash(self.leaves.get(leaf_index));
-        let mut height = 0;
-        let original_leaf = TailNode::new(hashed_leaf, height, leaf_index);
-        let leaf = original_leaf;
 
         let stack = Arc::clone(&self.stack);
         thread::spawn(move || {
-            let stack = stack.lock().unwrap();
+            let mut height = 0;
+            let original_leaf = TailNode::new(hashed_leaf, height, leaf_index);
+
+            let mut leaf = original_leaf;
+            let mut stack = stack.lock().unwrap();
 
             while stack.nodes.len() != 0 && stack.nodes.last().unwrap().height() == leaf.height {
                 let top_node = stack.pop().unwrap();
@@ -155,8 +169,17 @@ where
                 };
 
                 height = leaf.height() + 1;
-                let j = leaf_index;
+                let mut j = leaf_index;
+
+                for _ in 0..height {
+                    j = if is_even(j) { j } else { j - 1 };
+                    j /= 2;
+                }
+
+                leaf = TailNode::new(hash(prehash), height, j);
             }
+
+            stack.push(Box::new(leaf));
         });
 
         todo!();
@@ -225,3 +248,7 @@ impl Node for TailNode {
 
 #[derive(Clone, Debug)]
 struct InternalNode;
+
+fn is_even(index: usize) -> bool {
+    todo!();
+}
