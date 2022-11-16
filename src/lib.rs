@@ -134,7 +134,7 @@ where
     /// After the last call the stack contains one node, the desired inner node on height h.
     fn update(&mut self, leaf_index: usize, level: usize) {
         let hashed_leaf = self.hash(self.leaves.get(leaf_index));
-        let height = 0;
+        let mut height = 0;
         let original_leaf = TailNode::new(hashed_leaf, height, leaf_index);
         let leaf = original_leaf;
 
@@ -144,11 +144,18 @@ where
 
             while stack.nodes.len() != 0 && stack.nodes.last().unwrap().height() == leaf.height {
                 let top_node = stack.pop().unwrap();
-                let prehash = if top_node.j() < leaf.j() {
-                    top_node.hash() + leaf.hash()
+                let mut prehash = String::new();
+
+                if top_node.j() < leaf.j() {
+                    prehash.push_str(top_node.hash());
+                    prehash.push_str(leaf.hash());
                 } else {
-                    leaf.hash() + top_node.hash()
+                    prehash.push_str(leaf.hash());
+                    prehash.push_str(top_node.hash());
                 };
+
+                height = leaf.height() + 1;
+                let j = leaf_index;
             }
         });
 
