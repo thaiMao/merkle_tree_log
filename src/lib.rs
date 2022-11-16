@@ -68,3 +68,13 @@ struct TailNode {
     height: usize,
     leaf_index: usize,
 }
+
+impl TailNode {
+    fn new(hash: String, height: usize, leaf_index: usize) -> Self {
+        Self {
+            hash,
+            height,
+            leaf_index,
+        }
+    }
+}
