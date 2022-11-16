@@ -61,3 +61,10 @@ struct Leaf {}
 
 #[derive(Clone, Debug)]
 struct Keep;
+
+#[derive(Clone, Debug)]
+struct TailNode {
+    hash: String,
+    height: usize,
+    leaf_index: usize,
+}
