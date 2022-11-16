@@ -1,14 +1,30 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone, Debug)]
+struct Stack {}
+
+/// * `retain` - Holds a single right authentication node at height MERKLE_TREE_HEIGHT - 2.
+/// * `current_authentication_path` - A list of nodes representing the current authentication path.
+/// * `keep` - A list of nodes stored for efficient computation of left nodes.
+#[derive(Clone, Debug)]
+pub struct MerkleTree<const MERKLE_TREE_HEIGHT: usize> {
+    retain: Node,
+    treehashes: Vec<TreeHash>,
+    current_authentication_path: Vec<Node>,
+    leaves: Vec<Leaf>,
+    keep: Keep,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Clone, Debug)]
+struct Node {}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+#[derive(Clone, Debug)]
+struct TreeHash {
+    stack: Arc<Mutex<Stack>>,
 }
+
+#[derive(Clone, Debug)]
+struct Leaf {}
+
+#[derive(Clone, Debug)]
+struct Keep;
