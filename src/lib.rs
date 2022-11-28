@@ -50,7 +50,7 @@ impl<'a, const MERKLE_TREE_HEIGHT: usize> MerkleTree<'a, MERKLE_TREE_HEIGHT> {
             if first_parent_left_node_height == 0 {
                 if let Some(node) = self.current_authentication_path.get_mut(0) {
                     // TODO Pass in correct arguments
-                    let hash = [0; 32];
+                    let hash = String::from("");
                     let height = 0;
                     let leaf_index = 0;
                     *node = Node::new(hash, leaf_index, Height(height));
@@ -140,11 +140,11 @@ impl<'a> TreeHash<'a> {
                 let mut prehash = String::new();
 
                 if top_node.j() < node.j() {
-                    prehash.push_str(top_node.hash());
-                    prehash.push_str(node.hash());
+                    prehash.push_str(&top_node.hash());
+                    prehash.push_str(&node.hash());
                 } else {
-                    prehash.push_str(node.hash());
-                    prehash.push_str(top_node.hash());
+                    prehash.push_str(&node.hash());
+                    prehash.push_str(&top_node.hash());
                 };
 
                 height = node.height() + 1;
@@ -203,7 +203,7 @@ pub struct Level(pub usize);
 /// * `leaves` -
 /// * `authentication_path` -
 ///
-fn calculate_root(mut index: usize, leaves: &[Leaf], authentication_path: &[Node]) -> [u8; 32] {
+fn calculate_root(mut index: usize, leaves: &[Leaf], authentication_path: &[Node]) -> String {
     let mut leaf = Node::from(leaves[index]);
 
     for neighbor in authentication_path.iter() {
@@ -234,23 +234,22 @@ fn calculate_root(mut index: usize, leaves: &[Leaf], authentication_path: &[Node
     leaf.hash
 }
 
-fn create_hash(content: &str) -> [u8; 32] {
+fn create_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
-    let result = hasher.finalize();
 
-    result.into()
+    format!("{:X}", hasher.finalize())
 }
 
 #[derive(Clone, Debug)]
 pub struct Node {
-    hash: [u8; 32],
+    hash: String,
     height: Height,
     index: usize,
 }
 
 impl Node {
-    fn new(hash: [u8; 32], index: usize, height: Height) -> Self {
+    fn new(hash: String, index: usize, height: Height) -> Self {
         Self {
             hash,
             height,
@@ -270,8 +269,8 @@ impl Node {
         self.height.0
     }
 
-    fn hash(&self) -> [u8; 32] {
-        self.hash
+    fn hash(&self) -> &str {
+        self.hash.as_str()
     }
 
     fn even(&self) -> bool {
@@ -296,5 +295,9 @@ impl<'a> From<Leaf<'a>> for Node {
 }
 
 fn is_even(index: usize) -> bool {
-    todo!();
+    if index % 2 == 0 {
+        true
+    } else {
+        false
+    }
 }

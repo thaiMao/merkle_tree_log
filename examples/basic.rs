@@ -17,7 +17,7 @@ fn main() {
 
     let stack = Stack::default();
     let stack = Arc::new(Mutex::new(stack));
-    let mut tree_hash: TreeHash = TreeHash::new(stack, &leaves);
+    let tree_hash: TreeHash = TreeHash::new(stack, &leaves);
 
     let second_leaf = match leaves.get(1).take() {
         Some(leaf) => leaf,
@@ -26,8 +26,9 @@ fn main() {
     auth_path.push(Node::from(*second_leaf));
 
     for level in 1..merkle_tree_height {
-        let start = level.pow(2);
-        let end = start + level.pow(2);
+        const TWO: usize = 2;
+        let start = TWO.pow(level as u32);
+        let end = start + TWO.pow(level as u32);
         let mut auth_node = None;
         for leaf_index in start..end {
             tree_hash.update(leaf_index, Level(level));
