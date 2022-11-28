@@ -31,14 +31,17 @@ fn main() {
         let mut auth_node = None;
         for leaf_index in start..end {
             tree_hash.update(leaf_index, Level(level));
-            auth_node = Some(tree_hash.first());
+            // TODO Handle None case.
+            auth_node = tree_hash.first();
         }
 
         match auth_node {
             Some(node) => {
                 auth_path.push(node);
             }
-            None => unreachable!(),
+            None => {
+                // TODO
+            }
         }
     }
 }

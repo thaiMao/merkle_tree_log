@@ -103,8 +103,10 @@ impl<'a> TreeHash<'a> {
     }
 
     /// Return a copy of the first node from the stack.
-    pub fn first(&self) -> Node {
-        todo!()
+    pub fn first(&self) -> Option<Node> {
+        let stack = Arc::clone(&self.stack);
+        let stack = stack.lock().unwrap();
+        stack.nodes.get(0).cloned()
     }
 
     fn initialize(&mut self, index: usize) {
@@ -268,8 +270,8 @@ impl Node {
         self.height.0
     }
 
-    fn hash(&self) -> &str {
-        todo!()
+    fn hash(&self) -> [u8; 32] {
+        self.hash
     }
 
     fn even(&self) -> bool {
@@ -277,7 +279,7 @@ impl Node {
     }
 
     fn j(&self) -> usize {
-        todo!();
+        self.index
     }
 }
 
