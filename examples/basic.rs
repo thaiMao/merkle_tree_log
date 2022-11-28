@@ -1,6 +1,6 @@
+use merkle_tree_log::{Leaf, MerkleTree, Node, Stack, TailNode, TreeHash};
+use std::boxed::Box;
 use std::sync::{Arc, Mutex};
-
-use merkle_tree_log::{Leaf, MerkleTree, Node, Stack, TreeHash};
 
 fn main() {
     let merkle_tree_height: usize = 4;
@@ -14,9 +14,15 @@ fn main() {
     }
 
     // A collection of nodes representing the current authentication path.
-    let auth_path: Vec<Box<dyn Node>> = vec![];
+    let mut auth_path: Vec<Box<dyn Node>> = vec![];
 
     let stack = Stack::default();
     let stack = Arc::new(Mutex::new(stack));
-    let tree_hash: TreeHash<Leaf> = TreeHash::new(stack, &leaves);
+    let tree_hash: TreeHash<TailNode> = TreeHash::new(stack, &leaves);
+
+    let second_leaf = match leaves.get(1).take() {
+        Some(leaf) => leaf,
+        None => unreachable!(),
+    };
+    auth_path.push(Box::new(TailNode::from(*second_leaf)));
 }

@@ -52,7 +52,7 @@ where
             //self.keep.insert(first_parent_left_node_height);
         }
 
-        if leaf.left_node() {
+        if TailNode::from(leaf).left_node() {
             if first_parent_left_node_height == 0 {
                 if let Some(node) = self.current_authentication_path.get_mut(0) {
                     // TODO Pass in correct arguments
@@ -67,6 +67,7 @@ where
     }
 
     fn get_first_left_node_parent_height(leaf: Leaf) -> usize {
+        let leaf = TailNode::from(leaf);
         let mut height = 0;
 
         if leaf.left_node() {
@@ -209,26 +210,8 @@ impl<'a> Leaf<'a> {
         }
     }
 
-    fn left_node(&self) -> bool {
-        if (self.index as f32 + 1.0) % 2.0 == 0.0 {
-            true
-        } else {
-            false
-        }
-    }
-
     fn print(&self) -> String {
         todo!();
-    }
-}
-
-impl Node for Leaf<'_> {
-    fn height(&self) -> usize {
-        self.height
-    }
-
-    fn hash(&self) -> &str {
-        todo!()
     }
 }
 
@@ -236,18 +219,26 @@ impl Node for Leaf<'_> {
 struct Keep;
 
 #[derive(Clone, Debug)]
-struct TailNode {
+pub struct TailNode {
     hash: [u8; 32],
     height: usize,
-    leaf_index: usize,
+    index: usize,
 }
 
 impl TailNode {
-    fn new(hash: [u8; 32], height: usize, leaf_index: usize) -> Self {
+    fn new(hash: [u8; 32], height: usize, index: usize) -> Self {
         Self {
             hash,
             height,
-            leaf_index,
+            index,
+        }
+    }
+
+    fn left_node(&self) -> bool {
+        if (self.index as f32 + 1.0) % 2.0 == 0.0 {
+            true
+        } else {
+            false
         }
     }
 }
@@ -259,7 +250,7 @@ impl<'a> From<Leaf<'a>> for TailNode {
         Self {
             hash,
             height: 0,
-            leaf_index: leaf.index,
+            index: leaf.index,
         }
     }
 }
