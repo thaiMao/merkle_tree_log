@@ -6,15 +6,15 @@ use std::thread;
 
 #[derive(Default)]
 pub struct Stack {
-    nodes: Vec<Box<dyn Node + Send + Sync>>,
+    nodes: Vec<Node>,
 }
 
 impl Stack {
-    fn pop(&mut self) -> Option<Box<dyn Node + Send + Sync>> {
+    fn pop(&mut self) -> Option<Node> {
         self.nodes.pop()
     }
 
-    fn push(&mut self, element: Box<dyn Node + Send + Sync>) {
+    fn push(&mut self, element: Node) {
         self.nodes.push(element);
     }
 }
@@ -22,25 +22,19 @@ impl Stack {
 /// * `retain` - Holds a single right authentication node at height MERKLE_TREE_HEIGHT - 2.
 /// * `current_authentication_path` - A list of nodes representing the current authentication path.
 /// * `keep` - A list of nodes stored for efficient computation of left nodes.
-pub struct MerkleTree<'a, const MERKLE_TREE_HEIGHT: usize, T>
-where
-    T: Node,
-{
-    retain: InternalNode,
-    treehashes: Vec<TreeHash<'a, T>>,
-    current_authentication_path: Vec<Box<dyn Node>>,
+pub struct MerkleTree<'a, const MERKLE_TREE_HEIGHT: usize> {
+    retain: Node,
+    treehashes: Vec<TreeHash<'a>>,
+    current_authentication_path: Vec<Node>,
     leaves: Vec<Leaf<'a>>,
-    keep: HashSet<usize, Box<dyn Node>>,
+    keep: HashSet<usize, Node>,
 }
 
-impl<'a, const MERKLE_TREE_HEIGHT: usize, T> MerkleTree<'a, MERKLE_TREE_HEIGHT, T>
-where
-    T: Node + Clone + Debug,
-{
+impl<'a, const MERKLE_TREE_HEIGHT: usize> MerkleTree<'a, MERKLE_TREE_HEIGHT> {
     /// Update and output phase of merkle tree traversal.
     /// * `leaf` - The current leaf.
     /// Returns the current authentication path.
-    fn update_and_output<'b>(&mut self, leaf: Leaf) -> &'b [Box<dyn Node>] {
+    fn update_and_output<'b>(&mut self, leaf: Leaf) -> &'b [Node] {
         let first_parent_left_node_height = Self::get_first_left_node_parent_height(leaf);
 
         // Check if the parent leaf at height first_parent_left_node_height + 1 is a left node.
@@ -52,14 +46,14 @@ where
             //self.keep.insert(first_parent_left_node_height);
         }
 
-        if TailNode::from(leaf).left_node() {
+        if Node::from(leaf).left_node() {
             if first_parent_left_node_height == 0 {
                 if let Some(node) = self.current_authentication_path.get_mut(0) {
                     // TODO Pass in correct arguments
                     let hash = [0; 32];
                     let height = 0;
                     let leaf_index = 0;
-                    *node = Box::new(TailNode::new(hash, height, leaf_index));
+                    *node = Node::new(hash, leaf_index, Height(height));
                 };
             }
         }
@@ -67,7 +61,7 @@ where
     }
 
     fn get_first_left_node_parent_height(leaf: Leaf) -> usize {
-        let leaf = TailNode::from(leaf);
+        let leaf = Node::from(leaf);
         let mut height = 0;
 
         if leaf.left_node() {
@@ -89,41 +83,16 @@ where
         }
     }
 }
-pub trait Node {
-    fn even(&self) -> bool {
-        todo!();
-    }
-
-    fn j(&self) -> usize {
-        todo!();
-    }
-
-    fn height(&self) -> usize;
-
-    fn hash(&self) -> &str;
-}
-
-impl InternalNode {
-    fn even(&self) -> bool {
-        todo!()
-    }
-}
 
 #[derive(Clone)]
-pub struct TreeHash<'a, T>
-where
-    T: Node,
-{
+pub struct TreeHash<'a> {
     stack: Arc<Mutex<Stack>>,
-    node: Option<T>,
+    node: Option<Node>,
     index: usize,
     leaves: &'a [Leaf<'a>],
 }
 
-impl<'a, T> TreeHash<'a, T>
-where
-    T: Node + Send + Sync,
-{
+impl<'a> TreeHash<'a> {
     pub fn new(stack: Arc<Mutex<Stack>>, leaves: &'a [Leaf]) -> Self {
         Self {
             stack,
@@ -131,6 +100,11 @@ where
             node: None,
             leaves,
         }
+    }
+
+    /// Return a copy of the first node from the stack.
+    pub fn first(&self) -> Node {
+        todo!()
     }
 
     fn initialize(&mut self, index: usize) {
@@ -144,35 +118,34 @@ where
 
     /// Executes the treehash alogirthm once.
     /// After the last call the stack contains one node, the desired inner node on height h.
-    fn update(
-        &mut self,
-        leaf_index: usize,
-        level: usize,
-        hash: impl Fn(String) -> String + Send + 'static,
-    ) {
-        let hashed_leaf = self.hash(self.leaves.get(leaf_index));
+    pub fn update(&self, leaf_index: usize, level: Level) {
+        let leaf = match self.leaves.get(leaf_index) {
+            Some(leaf) => *leaf,
+            None => unreachable!(),
+        };
+        let hashed_leaf = create_hash(leaf.print());
 
         let stack = Arc::clone(&self.stack);
         thread::spawn(move || {
             let mut height = 0;
-            let original_leaf = TailNode::new(hashed_leaf, height, leaf_index);
+            let original_leaf = Node::new(hashed_leaf, leaf_index, Height(height));
 
-            let mut leaf = original_leaf;
+            let mut node = original_leaf;
             let mut stack = stack.lock().unwrap();
 
-            while stack.nodes.len() != 0 && stack.nodes.last().unwrap().height() == leaf.height {
+            while stack.nodes.len() != 0 && stack.nodes.last().unwrap().height() == node.height() {
                 let top_node = stack.pop().unwrap();
                 let mut prehash = String::new();
 
-                if top_node.j() < leaf.j() {
+                if top_node.j() < node.j() {
                     prehash.push_str(top_node.hash());
-                    prehash.push_str(leaf.hash());
+                    prehash.push_str(node.hash());
                 } else {
-                    prehash.push_str(leaf.hash());
+                    prehash.push_str(node.hash());
                     prehash.push_str(top_node.hash());
                 };
 
-                height = leaf.height() + 1;
+                height = node.height() + 1;
                 let mut j = leaf_index;
 
                 for _ in 0..height {
@@ -180,13 +153,11 @@ where
                     j /= 2;
                 }
 
-                leaf = TailNode::new(create_hash(&prehash), height, j);
+                node = Node::new(create_hash(&prehash), j, Height(height));
             }
 
-            stack.push(Box::new(leaf));
+            stack.push(node);
         });
-
-        todo!();
     }
 
     fn hash<U>(&self, content: U) -> [u8; 32] {
@@ -210,8 +181,8 @@ impl<'a> Leaf<'a> {
         }
     }
 
-    fn print(&self) -> String {
-        todo!();
+    fn print(&self) -> &'a str {
+        self.content
     }
 }
 
@@ -219,58 +190,10 @@ impl<'a> Leaf<'a> {
 struct Keep;
 
 #[derive(Clone, Debug)]
-pub struct TailNode {
-    hash: [u8; 32],
-    height: usize,
-    index: usize,
-}
-
-impl TailNode {
-    fn new(hash: [u8; 32], height: usize, index: usize) -> Self {
-        Self {
-            hash,
-            height,
-            index,
-        }
-    }
-
-    fn left_node(&self) -> bool {
-        if (self.index as f32 + 1.0) % 2.0 == 0.0 {
-            true
-        } else {
-            false
-        }
-    }
-}
-
-impl<'a> From<Leaf<'a>> for TailNode {
-    fn from(leaf: Leaf<'a>) -> Self {
-        let hash = create_hash(leaf.content);
-
-        Self {
-            hash,
-            height: 0,
-            index: leaf.index,
-        }
-    }
-}
-
-impl Node for TailNode {
-    fn height(&self) -> usize {
-        self.height
-    }
-
-    fn hash(&self) -> &str {
-        todo!()
-    }
-}
+struct Height(usize);
 
 #[derive(Clone, Debug)]
-struct InternalNode;
-
-fn is_even(index: usize) -> bool {
-    todo!();
-}
+pub struct Level(pub usize);
 
 ///
 ///
@@ -278,12 +201,8 @@ fn is_even(index: usize) -> bool {
 /// * `leaves` -
 /// * `authentication_path` -
 ///
-fn calculate_root(
-    mut index: usize,
-    leaves: &[Leaf],
-    authentication_path: &[Box<dyn Node>],
-) -> [u8; 32] {
-    let mut leaf = TailNode::from(leaves[index]);
+fn calculate_root(mut index: usize, leaves: &[Leaf], authentication_path: &[Node]) -> [u8; 32] {
+    let mut leaf = Node::from(leaves[index]);
 
     for neighbor in authentication_path.iter() {
         let mut prehash = String::new();
@@ -307,7 +226,7 @@ fn calculate_root(
         }
         index = (leaf.j().max(neighbor.j()) + 1) / 2 - 1;
 
-        leaf = TailNode::new(create_hash(&prehash), index, 0);
+        leaf = Node::new(create_hash(&prehash), index, Height(0));
     }
 
     leaf.hash
@@ -319,4 +238,61 @@ fn create_hash(content: &str) -> [u8; 32] {
     let result = hasher.finalize();
 
     result.into()
+}
+
+#[derive(Clone, Debug)]
+pub struct Node {
+    hash: [u8; 32],
+    height: Height,
+    index: usize,
+}
+
+impl Node {
+    fn new(hash: [u8; 32], index: usize, height: Height) -> Self {
+        Self {
+            hash,
+            height,
+            index,
+        }
+    }
+
+    fn left_node(&self) -> bool {
+        if (self.index as f32 + 1.0) % 2.0 == 0.0 {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn height(&self) -> usize {
+        self.height.0
+    }
+
+    fn hash(&self) -> &str {
+        todo!()
+    }
+
+    fn even(&self) -> bool {
+        todo!();
+    }
+
+    fn j(&self) -> usize {
+        todo!();
+    }
+}
+
+impl<'a> From<Leaf<'a>> for Node {
+    fn from(leaf: Leaf<'a>) -> Self {
+        let hash = create_hash(leaf.content);
+
+        Self {
+            hash,
+            height: Height(0),
+            index: leaf.index,
+        }
+    }
+}
+
+fn is_even(index: usize) -> bool {
+    todo!();
 }
