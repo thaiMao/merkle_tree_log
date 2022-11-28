@@ -1,9 +1,11 @@
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-struct Stack {
+#[derive(Default)]
+pub struct Stack {
     nodes: Vec<Box<dyn Node + Send + Sync>>,
 }
 
@@ -27,7 +29,7 @@ where
     retain: InternalNode,
     treehashes: Vec<TreeHash<'a, T>>,
     current_authentication_path: Vec<Box<dyn Node>>,
-    leaves: Vec<Leaf>,
+    leaves: Vec<Leaf<'a>>,
     keep: HashSet<usize, Box<dyn Node>>,
 }
 
@@ -53,7 +55,8 @@ where
         if leaf.left_node() {
             if first_parent_left_node_height == 0 {
                 if let Some(node) = self.current_authentication_path.get_mut(0) {
-                    let hash = String::from("");
+                    // TODO Pass in correct arguments
+                    let hash = [0; 32];
                     let height = 0;
                     let leaf_index = 0;
                     *node = Box::new(TailNode::new(hash, height, leaf_index));
@@ -106,21 +109,21 @@ impl InternalNode {
 }
 
 #[derive(Clone)]
-struct TreeHash<'a, T>
+pub struct TreeHash<'a, T>
 where
     T: Node,
 {
     stack: Arc<Mutex<Stack>>,
     node: Option<T>,
     index: usize,
-    leaves: &'a [Leaf],
+    leaves: &'a [Leaf<'a>],
 }
 
 impl<'a, T> TreeHash<'a, T>
 where
     T: Node + Send + Sync,
 {
-    fn new(stack: Arc<Mutex<Stack>>, leaves: &'a [Leaf]) -> Self {
+    pub fn new(stack: Arc<Mutex<Stack>>, leaves: &'a [Leaf]) -> Self {
         Self {
             stack,
             index: 0,
@@ -176,7 +179,7 @@ where
                     j /= 2;
                 }
 
-                leaf = TailNode::new(hash(prehash), height, j);
+                leaf = TailNode::new(create_hash(&prehash), height, j);
             }
 
             stack.push(Box::new(leaf));
@@ -185,18 +188,27 @@ where
         todo!();
     }
 
-    fn hash<U>(&self, content: U) -> String {
+    fn hash<U>(&self, content: U) -> [u8; 32] {
         todo!();
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Leaf {
+pub struct Leaf<'a> {
     index: usize,
     height: usize,
+    content: &'a str,
 }
 
-impl Leaf {
+impl<'a> Leaf<'a> {
+    pub fn new(content: &'a str, index: usize) -> Self {
+        Self {
+            index,
+            height: 0,
+            content,
+        }
+    }
+
     fn left_node(&self) -> bool {
         if (self.index as f32 + 1.0) % 2.0 == 0.0 {
             true
@@ -210,7 +222,7 @@ impl Leaf {
     }
 }
 
-impl Node for Leaf {
+impl Node for Leaf<'_> {
     fn height(&self) -> usize {
         self.height
     }
@@ -225,17 +237,29 @@ struct Keep;
 
 #[derive(Clone, Debug)]
 struct TailNode {
-    hash: String,
+    hash: [u8; 32],
     height: usize,
     leaf_index: usize,
 }
 
 impl TailNode {
-    fn new(hash: String, height: usize, leaf_index: usize) -> Self {
+    fn new(hash: [u8; 32], height: usize, leaf_index: usize) -> Self {
         Self {
             hash,
             height,
             leaf_index,
+        }
+    }
+}
+
+impl<'a> From<Leaf<'a>> for TailNode {
+    fn from(leaf: Leaf<'a>) -> Self {
+        let hash = create_hash(leaf.content);
+
+        Self {
+            hash,
+            height: 0,
+            leaf_index: leaf.index,
         }
     }
 }
@@ -267,8 +291,8 @@ fn calculate_root(
     mut index: usize,
     leaves: &[Leaf],
     authentication_path: &[Box<dyn Node>],
-) -> String {
-    let mut leaf = TailNode::new(hash(leaves[index].print()), index, 0);
+) -> [u8; 32] {
+    let mut leaf = TailNode::from(leaves[index]);
 
     for neighbor in authentication_path.iter() {
         let mut prehash = String::new();
@@ -292,12 +316,16 @@ fn calculate_root(
         }
         index = (leaf.j().max(neighbor.j()) + 1) / 2 - 1;
 
-        leaf = TailNode::new(hash(prehash), index, 0);
+        leaf = TailNode::new(create_hash(&prehash), index, 0);
     }
 
     leaf.hash
 }
 
-fn hash(content: String) -> String {
-    todo!();
+fn create_hash(content: &str) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    let result = hasher.finalize();
+
+    result.into()
 }
