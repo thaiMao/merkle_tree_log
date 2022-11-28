@@ -66,10 +66,33 @@ impl<'a, const MERKLE_TREE_HEIGHT: usize> MerkleTree<'a, MERKLE_TREE_HEIGHT> {
             }
         }
 
+        // Retain holds a single right authentication node at height MERKLE_TREE_HEIGHT - 2.
+        let mut retain = None;
+        const POSITION: usize = 3; // Index position at height MERKLE_TREE_HEIGHT - 2.
+        const TWO: usize = 2;
+        let start = POSITION * TWO.pow(MERKLE_TREE_HEIGHT as u32 - 2);
+        // Tree hash algorithm must be executed 2^height times.
+        let end = start + TWO.pow(MERKLE_TREE_HEIGHT as u32 - 2);
+
+        let stack = Stack::default();
+        let stack = Arc::new(Mutex::new(stack));
+        let tree_hash: TreeHash = TreeHash::new(stack, &leaves);
+
+        for leaf_index in start..end {
+            tree_hash.update(leaf_index, Level(MERKLE_TREE_HEIGHT - 2));
+            // TODO Handle None case.
+            retain = tree_hash.first();
+        }
+
+        let retain = match retain {
+            Some(retain) => retain,
+            None => unreachable!(),
+        };
+
         Self {
             leaves,
             keep: HashSet::<Node>::new(),
-            retain: Node::default(),
+            retain,
             treehashes: vec![],
             current_authentication_path,
         }
@@ -235,6 +258,12 @@ struct Keep;
 #[derive(Clone, Debug)]
 struct Height(usize);
 
+impl PartialEq<Height> for usize {
+    fn eq(&self, other: &Height) -> bool {
+        other.0 == *self
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Level(pub usize);
 
@@ -372,7 +401,7 @@ fn is_even(index: usize) -> bool {
 
 #[cfg(test)]
 mod merkle_tree_tests {
-    use super::{Leaf, MerkleTree};
+    use super::{Leaf, MerkleTree, Node};
 
     #[test]
     fn test_initial_authentication_path() {
@@ -395,5 +424,23 @@ mod merkle_tree_tests {
             .collect::<Vec<(usize, usize)>>();
 
         assert_eq!(vec![(1, 0), (1, 1), (1, 2), (1, 3)], init_auth_path);
+    }
+
+    #[test]
+    fn test_retain_node_value() {
+        const MERKLE_TREE_HEIGHT: usize = 4;
+        let number_of_leaves = MERKLE_TREE_HEIGHT.pow(2);
+        let mut leaves = Vec::with_capacity(number_of_leaves);
+
+        // Create leaves
+        for index in 0..number_of_leaves {
+            let content = String::from("Hello, world");
+            leaves.push(Leaf::new(content, index));
+        }
+
+        let merkle_tree = MerkleTree::<MERKLE_TREE_HEIGHT>::new(leaves);
+
+        assert_eq!(3, merkle_tree.retain.index);
+        assert_eq!(2, merkle_tree.retain.height);
     }
 }
