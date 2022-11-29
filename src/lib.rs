@@ -22,22 +22,22 @@ impl Stack {
 /// * `retain` - Holds a single right authentication node at height MERKLE_TREE_HEIGHT - 2.
 /// * `current_authentication_path` - A list of nodes representing the current authentication path.
 /// * `keep` - A list of nodes stored for efficient computation of left nodes.
-pub struct MerkleTree<'a, const MERKLE_TREE_HEIGHT: usize> {
+pub struct MerkleTree<const MERKLE_TREE_HEIGHT: usize> {
     retain: Node,
-    treehashes: Vec<TreeHash<'a>>,
+    treehashes: Vec<TreeHash>,
     current_authentication_path: Vec<Node>,
     leaves: Vec<Leaf>,
     keep: HashSet<Node>,
 }
 
-impl<'a, const MERKLE_TREE_HEIGHT: usize> MerkleTree<'a, MERKLE_TREE_HEIGHT> {
+impl<const MERKLE_TREE_HEIGHT: usize> MerkleTree<MERKLE_TREE_HEIGHT> {
     pub fn new(leaves: Vec<Leaf>) -> Self {
         // A collection of nodes representing the current authentication path.
         let mut current_authentication_path: Vec<Node> = vec![];
 
         let stack = Stack::default();
         let stack = Arc::new(Mutex::new(stack));
-        let tree_hash: TreeHash = TreeHash::new(stack, &leaves);
+        let tree_hash: TreeHash = TreeHash::new(Arc::clone(&stack));
 
         let second_leaf = match leaves.get(1).take() {
             Some(leaf) => leaf,
@@ -51,7 +51,7 @@ impl<'a, const MERKLE_TREE_HEIGHT: usize> MerkleTree<'a, MERKLE_TREE_HEIGHT> {
             let end = start + TWO.pow(level as u32);
             let mut auth_node = None;
             for leaf_index in start..end {
-                tree_hash.update(leaf_index, Level(level));
+                tree_hash.update(leaf_index, Level(level), &leaves);
                 // TODO Handle None case.
                 auth_node = tree_hash.first();
             }
@@ -76,10 +76,10 @@ impl<'a, const MERKLE_TREE_HEIGHT: usize> MerkleTree<'a, MERKLE_TREE_HEIGHT> {
 
         let stack = Stack::default();
         let stack = Arc::new(Mutex::new(stack));
-        let tree_hash: TreeHash = TreeHash::new(stack, &leaves);
+        let tree_hash: TreeHash = TreeHash::new(Arc::clone(&stack));
 
         for leaf_index in start..end {
-            tree_hash.update(leaf_index, Level(MERKLE_TREE_HEIGHT - 2));
+            tree_hash.update(leaf_index, Level(MERKLE_TREE_HEIGHT - 2), &leaves);
             // TODO Handle None case.
             retain = tree_hash.first();
         }
@@ -89,11 +89,50 @@ impl<'a, const MERKLE_TREE_HEIGHT: usize> MerkleTree<'a, MERKLE_TREE_HEIGHT> {
             None => unreachable!(),
         };
 
+        // Store the right next authentication node in the treehash instances.
+        // TODO Avoid reinitalizing stack.
+        let stack = Stack::default();
+        let leaf = match leaves.get(POSITION) {
+            Some(leaf) => leaf,
+            None => unreachable!(),
+        };
+        let stack = Arc::new(Mutex::new(stack));
+        // TODO Avoid reinitalizing tree_hash
+        let mut tree_hash = TreeHash::new(Arc::clone(&stack));
+        tree_hash.node = Some(Node::from(leaf));
+
+        let mut treehashes = vec![];
+        treehashes.push(tree_hash);
+
+        // TODO Handle error if the merkle tree height is not at least 4.
+        debug_assert!(MERKLE_TREE_HEIGHT - 3 >= 1);
+        for level in 1..=(MERKLE_TREE_HEIGHT - 3) {
+            let start = POSITION * TWO.pow(level as u32);
+            // Tree hash algorithm must be executed 2^height times.
+            let end = start + TWO.pow(level as u32);
+
+            let mut tree_hash = TreeHash::new(Arc::clone(&stack));
+            let mut next_auth_node = None;
+            for leaf_index in start..end {
+                tree_hash.update(leaf_index, Level(level), &leaves);
+                next_auth_node = tree_hash.first();
+            }
+
+            let next_auth_node = match next_auth_node {
+                Some(node) => node,
+                None => unreachable!(),
+            };
+
+            tree_hash.node = Some(next_auth_node);
+
+            treehashes.push(tree_hash);
+        }
+
         Self {
             leaves,
             keep: HashSet::<Node>::new(),
             retain,
-            treehashes: vec![],
+            treehashes,
             current_authentication_path,
         }
     }
@@ -151,20 +190,18 @@ impl<'a, const MERKLE_TREE_HEIGHT: usize> MerkleTree<'a, MERKLE_TREE_HEIGHT> {
 }
 
 #[derive(Clone)]
-pub struct TreeHash<'a> {
+pub struct TreeHash {
     stack: Arc<Mutex<Stack>>,
     node: Option<Node>,
     index: usize,
-    leaves: &'a [Leaf],
 }
 
-impl<'a> TreeHash<'a> {
-    pub fn new(stack: Arc<Mutex<Stack>>, leaves: &'a [Leaf]) -> Self {
+impl TreeHash {
+    pub fn new(stack: Arc<Mutex<Stack>>) -> Self {
         Self {
             stack,
             index: 0,
             node: None,
-            leaves,
         }
     }
 
@@ -186,8 +223,8 @@ impl<'a> TreeHash<'a> {
 
     /// Executes the treehash alogirthm once.
     /// After the last call the stack contains one node, the desired inner node on height h.
-    pub fn update(&self, leaf_index: usize, level: Level) {
-        let leaf = match self.leaves.get(leaf_index) {
+    pub fn update(&self, leaf_index: usize, level: Level, leaves: &[Leaf]) {
+        let leaf = match leaves.get(leaf_index) {
             Some(leaf) => leaf,
             None => unreachable!(),
         };
@@ -442,5 +479,31 @@ mod merkle_tree_tests {
 
         assert_eq!(3, merkle_tree.retain.index);
         assert_eq!(2, merkle_tree.retain.height);
+    }
+
+    #[test]
+    fn test_right_next_auth_node_is_stored_in_treehash_instances() {
+        const MERKLE_TREE_HEIGHT: usize = 4;
+        let number_of_leaves = MERKLE_TREE_HEIGHT.pow(2);
+        let mut leaves = Vec::with_capacity(number_of_leaves);
+
+        // Create leaves - TODO Create helper that creates leaves.
+        for index in 0..number_of_leaves {
+            let content = String::from("Hello, world");
+            leaves.push(Leaf::new(content, index));
+        }
+
+        let merkle_tree = MerkleTree::<MERKLE_TREE_HEIGHT>::new(leaves);
+
+        let nodes_stored_in_treehash_instances = merkle_tree
+            .treehashes
+            .iter()
+            .cloned()
+            .map(|treehash| treehash.node)
+            .flatten()
+            .map(|node| (node.index, node.height.0))
+            .collect::<Vec<_>>();
+
+        assert_eq!(nodes_stored_in_treehash_instances, vec![(3, 0), (3, 1)]);
     }
 }
